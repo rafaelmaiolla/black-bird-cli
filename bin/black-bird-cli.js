@@ -19,9 +19,8 @@ program
 program.parse(process.argv);
 
 function execute() {
-  if (program.connect) {
-    var client = new Client(52690, true);
-  }
+  console.log('[black-bird-cli]', 'Execute');
+  var client = new Client(52690, true);
 }
 
 execute();

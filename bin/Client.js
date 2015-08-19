@@ -1,52 +1,98 @@
 var io = require('socket.io-client');
 var fs = require('fs');
 var path = require('path');
-var os = require("os");
+var os = require('os');
+var recursive = require('recursive-readdir');
 
 function Client(port, connect) {
+  console.log('[black-bird-cli]', 'Connecting...');
+
   this.socket = io('http://localhost:' + port);
 
-  socket.on('connect', function() {
-    console.log('connect');
-  });
+  this.socket.on('connect', function() {
+    console.log('[black-bird-cli]', 'Connected');
 
-  socket.on('cmd', function(data) {
-    console.log('cmd');
-  });
+    this.socket.emit('black-bird:connect');
+  }.bind(this));
 
-  socket.on('disconnect', function() {
-    console.log('disconnect');
-  });
+  this.socket.on('black-bird:cmd', function(data) {
+    console.log('[black-bird-cli]', 'black-bird:cmd', data);
+    if (this['command' + data.cmd]) {
+      this['command' + data.cmd].apply(this, data.arguments);
 
-  socket.on('error', function(err) {
-    console.error(err);
-  });
+    } else {
+      console.error('[black-bird-cli]', 'Command not supported', data.cmd);
+    }
+  }.bind(this));
 
-  if (connect) {
-    socket.emit('black-bird:connect');
-  }
+  this.socket.on('disconnect', function() {
+    console.log('[black-bird-cli]', 'Disconnected');
+  }.bind(this));
 
-  this.openFile(".test");
+  this.socket.on('error', function(err) {
+    console.error('[black-bird-cli]', err);
+  }.bind(this));
 }
+
+Client.prototype.sendCommand = function(command, commandArguments) {
+  console.log('[black-bird-cli]', 'Sending command', command, commandArguments);
+
+  this.socket.emit('black-bird:cmd',  {
+    cmd: command,
+    arguments: commandArguments
+  });
+};
+
+Client.prototype.commandSave = function(options, fileContent) {
+  console.log('[black-bird-cli]', 'Command Save', options);
+
+  var writeStream = fs.createWriteStream(options.file);
+  console.log('[black-bird-cli]', 'Saving file', options.basename);
+
+  writeStream.end(fileContent, "utf8", function() {
+    console.log('[black-bird-cli]', 'File saved', options.basename);
+    this.sendCommand('ConfirmSave', [options]);
+  }.bind(this));
+};
+
+Client.prototype.commandList = function(path) {
+  console.log('[black-bird-cli]', 'Command List', path);
+
+  recursive(path, [], function (err, files) {
+    console.log('[black-bird-cli]', 'Files', files);
+    // Files is an array of filename
+    this.sendCommand('List', [files]);
+  }.bind(this));
+};
+
+Client.prototype.commandOpen = function(filePath) {
+  console.log('[black-bird-cli]', 'Command Open', filePath);
+
+  this.openFile(filePath);
+};
 
 Client.prototype.openFile = function(filePath) {
+  console.log('[black-bird-cli]', 'Open file', filePath);
+
   var commandData = {
-    token: path.resolve(filePath),
-    displayName: path.basename(filePath),
-    remoteAddress: os.hostname(),
-    baseName: path.basename(filePath)
+    file: path.resolve(filePath),
+    hostname: os.hostname(),
+    basename: path.basename(filePath)
   };
 
-  fs.readFile(filePath, 'utf8', function (err, data) {
+  console.log('[black-bird-cli]', 'commandData', commandData);
+
+  console.log('[black-bird-cli]', 'Read file');
+
+  fs.readFile(filePath, 'utf8', function(err, data) {
     if (err) {
-      return console.log(err);
+      return console.error('[black-bird-cli]', err);
     }
 
-    this.socket.emit('black-bird:cmd',  {
-      f: 'Open',
-      arguments: commandData
-    });
-  });
-}
+    console.log('[black-bird-cli]', 'Sending file');
+    this.sendCommand('Open', [commandData, data]);
+
+  }.bind(this));
+};
 
 module.exports = Client;
