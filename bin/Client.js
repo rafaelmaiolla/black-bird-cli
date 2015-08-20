@@ -55,10 +55,10 @@ Client.prototype.commandSave = function(options, fileContent) {
   }.bind(this));
 };
 
-Client.prototype.commandList = function(path) {
-  console.log('[black-bird-cli]', 'Command List', path);
+Client.prototype.commandList = function(path, ignoredNames) {
+  console.log('[black-bird-cli]', 'Command List', path, ignoredNames);
 
-  recursive(path, ["**/.svn/**", "**/.git/**"], function (err, files) {
+  recursive(path, ignoredNames, function (err, files) {
     console.log('[black-bird-cli]', 'Files', files);
     // Files is an array of filename
     this.sendCommand('List', [files]);
