@@ -5,6 +5,7 @@ var os = require('os');
 var recursive = require('recursive-readdir');
 var watch = require('watch');
 var minimatch = require("minimatch");
+var svn = require('svn-interface');
 
 function Client(port, files) {
   console.log('[black-bird-cli]', 'Client port=' + port);
@@ -71,12 +72,12 @@ Client.prototype.commandSave = function(options, fileContent) {
   }.bind(this));
 };
 
-Client.prototype.commandList = function(path, ignoredNames) {
-  console.log('[black-bird-cli]', 'Command List', path, ignoredNames);
+Client.prototype.commandList = function(remotePath, ignoredNames) {
+  console.log('[black-bird-cli]', 'Command List', remotePath, ignoredNames);
 
-  this.createMonitor(path, ignoredNames);
+  this.createMonitor(remotePath, ignoredNames);
 
-  recursive(path, ignoredNames, function (err, files) {
+  recursive(remotePath, ignoredNames, function (err, files) {
     console.log('[black-bird-cli]', 'Files', files);
     // Files is an array of filename
     this.sendCommand('List', [files]);
@@ -87,6 +88,20 @@ Client.prototype.commandOpen = function(filePath) {
   console.log('[black-bird-cli]', 'Command Open', filePath);
 
   this.openFile(filePath);
+};
+
+Client.prototype.commandDiff = function(filePath, repositoryType) {
+  console.log('[black-bird-cli]', 'Command Diff', filePath, repositoryType);
+
+  if (repositoryType == 'svn') {
+    svn.diff(filePath, {}, function(err, data) {
+      if (err) {
+        console.error('[black-bird-cli]', 'Failed to diff path');
+      }
+
+      this.sendCommand('Diff', [data]);
+    });
+  }
 };
 
 Client.prototype.openFileList = function(fileList) {
@@ -173,7 +188,7 @@ Client.prototype.filterMonitorFiles = function(ignoredNames) {
   }
 };
 
-Client.prototype.createMonitor = function(path, ignoredNames) {
+Client.prototype.createMonitor = function(remotePath, ignoredNames) {
   console.log('[black-bird-cli]', 'Create monitor');
 
   var options = {
@@ -187,7 +202,7 @@ Client.prototype.createMonitor = function(path, ignoredNames) {
     this.monitor.stop();
   }
 
-  watch.createMonitor(path, options, function (monitor) {
+  watch.createMonitor(remotePath, options, function (monitor) {
     console.log('[black-bird-cli]', '[monitor]', 'Monitor created');
     this.monitor = monitor;
 
