@@ -1,6 +1,6 @@
 {
   "name": "black-bird-cli",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Command line tool for the black-bird atom package",
   "bin": {
     "black-bird": "./bin/black-bird-cli.js"
