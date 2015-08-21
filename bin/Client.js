@@ -4,6 +4,7 @@ var path = require('path');
 var os = require('os');
 var recursive = require('recursive-readdir');
 var watch = require('watch');
+var minimatch = require("minimatch");
 
 function Client(port, connect) {
   console.log('[black-bird-cli]', 'Connecting...');
@@ -69,7 +70,7 @@ Client.prototype.commandSave = function(options, fileContent) {
 Client.prototype.commandList = function(path, ignoredNames) {
   console.log('[black-bird-cli]', 'Command List', path, ignoredNames);
 
-  this.createMonitor(path);
+  this.createMonitor(path, ignoredNames);
 
   recursive(path, ignoredNames, function (err, files) {
     console.log('[black-bird-cli]', 'Files', files);
@@ -117,16 +118,42 @@ Client.prototype.fileChanged = function(fileName) {
   this.sendCommand('Changed', [options]);
 };
 
-Client.prototype.createMonitor = function(path) {
+Client.prototype.filterMonitorFiles = function(ignoredNames) {
+  var ignoreOpts = {matchBase: true};
+
+  return function(file, stats) {
+    console.log(file);
+    for (var i = 0; i < ignoredNames.length; i++) {
+      if (minimatch(file.toString(), ignoredNames[i], ignoreOpts)) {
+        console.log("match");
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+Client.prototype.createMonitor = function(path, ignoredNames) {
   console.log('[black-bird-cli]', 'Create monitor');
 
-  watch.createMonitor(path, function (monitor) {
+  var options = {
+    filter: this.filterMonitorFiles(ignoredNames),
+    ignoreDotFiles: true,
+    ignoreUnreadableDir: true,
+    ignoreNotPermitted: true
+  };
+
+  if (this.monitor) {
+    this.monitor.stop();
+  }
+
+  watch.createMonitor(path, options, function (monitor) {
     console.log('[black-bird-cli]', '[monitor]', 'Monitor created');
     this.monitor = monitor;
 
     monitor.on("created", function (f, stat) {
       console.log('[black-bird-cli]', '[monitor]', 'File created', f);
-      // Handle new files
+      this.sendCommand('Created', [f.toString()]);
     }.bind(this));
 
     monitor.on("changed", function (f, curr, prev) {
@@ -138,7 +165,7 @@ Client.prototype.createMonitor = function(path) {
 
     monitor.on("removed", function (f, stat) {
       console.log('[black-bird-cli]', '[monitor]', 'File removed', f);
-      // Handle removed files
+      this.sendCommand('Removed', [f.toString()]);
     }.bind(this));
 
   }.bind(this));
