@@ -6,7 +6,9 @@ var recursive = require('recursive-readdir');
 var watch = require('watch');
 var minimatch = require("minimatch");
 
-function Client(port, connect) {
+function Client(port, files) {
+  console.log('[black-bird-cli]', 'Client port=' + port);
+
   console.log('[black-bird-cli]', 'Connecting...');
 
   this.socket = io('http://localhost:' + port);
@@ -17,6 +19,8 @@ function Client(port, connect) {
     console.log('[black-bird-cli]', 'Connected');
 
     this.socket.emit('black-bird:connect');
+
+    this.openFileList(files);
   }.bind(this));
 
   this.socket.on('black-bird:cmd', function(data) {
@@ -85,30 +89,66 @@ Client.prototype.commandOpen = function(filePath) {
   this.openFile(filePath);
 };
 
+Client.prototype.openFileList = function(fileList) {
+  console.log('[black-bird-cli]', 'Open file list', fileList);
+
+  fileList.forEach(function(file, index, list) {
+    this.openFile(file);
+  }.bind(this));
+};
+
 Client.prototype.openFile = function(filePath) {
   console.log('[black-bird-cli]', 'Open file', filePath);
 
   var options = {
-    file: path.resolve(filePath),
-    hostname: os.hostname(),
-    basename: path.basename(filePath)
+    hostname: os.hostname()
   };
+
+  if (filePath == '-') {
+    options.file = '-';
+    options.basename = 'untitled (stdin)';
+
+  } else {
+    options.file = path.resolve(filePath);
+    options.basename = path.basename(filePath);
+  }
 
   console.log('[black-bird-cli]', 'options', options);
 
   console.log('[black-bird-cli]', 'Read file');
 
-  fs.readFile(filePath, 'utf8', function(err, data) {
-    if (err) {
-      return console.error('[black-bird-cli]', err);
-    }
+  if (filePath == '-') {
+    var data = "";
 
-    this.monitoredFiles[filePath] = options;
+    process.stdin.on("data", function(_data) {
+      console.log("process.stdin", _data)
+      data += _data;
+    }.bind(this));
 
-    console.log('[black-bird-cli]', 'Sending file');
-    this.sendCommand('Open', [options, data]);
+    process.stdin.on("error", function(err) {
+      console.log('[black-bird-cli]', 'Failed to read from stdin');
+    }.bind(this));
 
-  }.bind(this));
+    process.stdin.on("end", function(err) {
+      this.sendCommand('Open', [options, data]);
+    }.bind(this));
+
+  } else if (fs.existsSync(filePath)) {
+    fs.readFile(filePath, 'utf8', function(err, data) {
+      if (err) {
+        return console.error('[black-bird-cli]', err);
+      }
+
+      this.monitoredFiles[filePath] = options;
+
+      console.log('[black-bird-cli]', 'Sending file');
+      this.sendCommand('Open', [options, data]);
+
+    }.bind(this));
+
+  } else {
+    this.sendCommand('Open', [options, ""]);
+  }
 };
 
 Client.prototype.fileChanged = function(fileName) {
