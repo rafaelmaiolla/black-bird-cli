@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 var settings = require('./settings');
 var Client = require('./Client');
 

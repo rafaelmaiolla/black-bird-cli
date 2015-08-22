@@ -59,7 +59,7 @@ commander
   // .option("-t, --type <str>", "Treat file as having type <str>.")
   .option("-f, --force", "Open even if the file is not writable.")
   .option("-v, --verbose", "Verbose logging messages.")
-  .option('-c, --connect', 'Connect to remote server to list files and watch for chagnes');
+  .option('-c, --connect', 'Connect to remote server to list files and watch for changes');
 
 commander.parse(process.argv)
 
@@ -94,27 +94,22 @@ function fileIsWritable(file) {
 
 files = commander.args;
 
-if (files.length == 0 && (!process.stdin.isTTY || options.wait)) {
+if (files.length == 0 && !process.stdin.isTTY) {
   files.push('-');
 }
 
 files.forEach(function(file, index, list) {
-  if (file == "-") {
-    if (process.stdin.isTTY) {
-      console.error("Reading from stdin, press ^D to stop");
+  if (fs.existsSync(file)) {
+    var stat = fs.statSync(file);
+    if (stat.isDirectory()) {
+      fatalErr(file + " is a directory. aborting...");
+    }
+    if (!fileIsWritable(file)) {
+      if (options.force) {
+        console.error("file " + file + " is not writable.  Opening anyway.");
 
-    } else if (fs.existsSync(file)) {
-      var stat = fs.statSync(file);
-      if (stat.isDirectory()) {
-        fatalErr(file + " is a directory. aborting...");
-      }
-      if (!fileIsWritable(file)) {
-        if (options.force) {
-          console.error("file " + file + " is not writable.  Opening anyway.");
-
-        } else {
-          fatalErr("file " + file + " is not writable.  Use -f/--force to open anyway")
-        }
+      } else {
+        fatalErr("file " + file + " is not writable.  Use -f/--force to open anyway")
       }
     }
   }

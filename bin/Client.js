@@ -80,7 +80,7 @@ Client.prototype.commandList = function(remotePath, ignoredNames) {
   recursive(remotePath, ignoredNames, function (err, files) {
     console.log('[black-bird-cli]', 'Files', files);
     // Files is an array of filename
-    this.sendCommand('List', [files]);
+    this.sendCommand('List', [files, remotePath]);
   }.bind(this));
 };
 
@@ -102,6 +102,14 @@ Client.prototype.commandDiff = function(filePath, repositoryType) {
       this.sendCommand('Diff', [data]);
     });
   }
+};
+
+Client.prototype.commandReject = function() {
+  console.log('[black-bird-cli]', 'Command Reject');
+
+  console.error('[black-bird-cli]', 'Failed to connect', 'Connection rejected');
+
+  process.exit(1);
 };
 
 Client.prototype.openFileList = function(fileList) {
