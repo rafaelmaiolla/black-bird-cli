@@ -9,7 +9,7 @@ var settings, options, files;
 function loadDiskConfig() {
   var homePath = process.env[(os.platform() == "win32" ? "USERPROFILE" : "HOME")];
 
-  var file = path.join(homePath, ".black-bird.rc");
+  var file = path.join(homePath, ".black-birdrc");
 
   var rcFile;
   if (fs.existsSync(file)) {

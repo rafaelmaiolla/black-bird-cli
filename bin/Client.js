@@ -6,22 +6,28 @@ var recursive = require('recursive-readdir');
 var watch = require('watch');
 var minimatch = require("minimatch");
 var svn = require('svn-interface');
+var md5 = require('md5');
 
-function Client(port, files) {
-  console.log('[black-bird-cli]', 'Client port=' + port);
+function Client(port, fileList) {
+  this.port = port;
+  this.fileList = fileList;
+  console.log('[black-bird-cli]', 'Client port=' + this.port);
 
   console.log('[black-bird-cli]', 'Connecting...');
 
-  this.socket = io('http://localhost:' + port);
+  this.socket = io('http://localhost:' + this.port);
+  this.handleSocketEvents();
+}
 
-  this.monitoredFiles = {};
-
+Client.prototype.handleSocketEvents = function() {
   this.socket.on('connect', function() {
     console.log('[black-bird-cli]', 'Connected');
 
     this.socket.emit('black-bird:connect');
 
-    this.openFileList(files);
+    if (this.fileList.length) {
+      this.openFileList(this.fileList);
+    }
   }.bind(this));
 
   this.socket.on('black-bird:cmd', function(data) {
@@ -52,35 +58,37 @@ Client.prototype.sendCommand = function(command, commandArguments) {
   });
 };
 
-Client.prototype.commandClose = function(options) {
-  console.log('[black-bird-cli]', 'Command Close', options);
+Client.prototype.commandClose = function(filePath) {
+  console.log('[black-bird-cli]', 'Command Close', filePath);
 
-  delete this.monitoredFiles[options.file];
-
-  this.sendCommand('ConfirmClose', [options]);
+  this.sendCommand('ConfirmClose', [filePath]);
 };
 
-Client.prototype.commandSave = function(options, fileContent) {
-  console.log('[black-bird-cli]', 'Command Save', options);
+Client.prototype.commandSave = function(filePath, fileContent) {
+  console.log('[black-bird-cli]', 'Command Save', filePath);
 
-  var writeStream = fs.createWriteStream(options.file);
-  console.log('[black-bird-cli]', 'Saving file', options.basename);
+  if (filePath != '-') {
+    var writeStream = fs.createWriteStream(filePath);
+    console.log('[black-bird-cli]', 'Saving file', path.basename(filePath));
 
-  writeStream.end(fileContent, "utf8", function() {
-    console.log('[black-bird-cli]', 'File saved', options.basename);
-    this.sendCommand('ConfirmSave', [options]);
-  }.bind(this));
+    writeStream.end(fileContent, "utf8", function() {
+      console.log('[black-bird-cli]', 'File saved', path.basename(filePath));
+      this.sendCommand('ConfirmSave', [filePath]);
+    }.bind(this));
+
+  } else {
+    this.sendCommand('SaveRejected', [filePath]);
+  }
 };
 
-Client.prototype.commandList = function(remotePath, ignoredNames) {
-  console.log('[black-bird-cli]', 'Command List', remotePath, ignoredNames);
+Client.prototype.commandList = function(filePath, ignoredNames) {
+  console.log('[black-bird-cli]', 'Command List', filePath, ignoredNames);
 
-  this.createMonitor(remotePath, ignoredNames);
+  this.createMonitor(filePath, ignoredNames);
 
-  recursive(remotePath, ignoredNames, function (err, files) {
-    console.log('[black-bird-cli]', 'Files', files);
-    // Files is an array of filename
-    this.sendCommand('List', [files, remotePath]);
+  recursive(filePath, ignoredNames, function (err, fileList) {
+    console.log('[black-bird-cli]', 'File list', fileList);
+    this.sendCommand('List', [filePath, fileList]);
   }.bind(this));
 };
 
@@ -99,7 +107,7 @@ Client.prototype.commandDiff = function(filePath, repositoryType) {
         console.error('[black-bird-cli]', 'Failed to diff path');
       }
 
-      this.sendCommand('Diff', [data]);
+      this.sendCommand('Diff', [filePath, data]);
     });
   }
 };
@@ -120,23 +128,8 @@ Client.prototype.openFileList = function(fileList) {
   }.bind(this));
 };
 
-Client.prototype.openFile = function(filePath) {
+Client.prototype.openFile = function(filePath, reopen) {
   console.log('[black-bird-cli]', 'Open file', filePath);
-
-  var options = {
-    hostname: os.hostname()
-  };
-
-  if (filePath == '-') {
-    options.file = '-';
-    options.basename = 'untitled (stdin)';
-
-  } else {
-    options.file = path.resolve(filePath);
-    options.basename = path.basename(filePath);
-  }
-
-  console.log('[black-bird-cli]', 'options', options);
 
   console.log('[black-bird-cli]', 'Read file');
 
@@ -153,7 +146,7 @@ Client.prototype.openFile = function(filePath) {
     }.bind(this));
 
     process.stdin.on("end", function(err) {
-      this.sendCommand('Open', [options, data]);
+      this.sendCommand('Open', [filePath, data]);
     }.bind(this));
 
   } else if (fs.existsSync(filePath)) {
@@ -162,23 +155,14 @@ Client.prototype.openFile = function(filePath) {
         return console.error('[black-bird-cli]', err);
       }
 
-      this.monitoredFiles[filePath] = options;
-
       console.log('[black-bird-cli]', 'Sending file');
-      this.sendCommand('Open', [options, data]);
+      this.sendCommand('Open', [filePath, data]);
 
     }.bind(this));
 
   } else {
-    this.sendCommand('Open', [options, ""]);
+    this.sendCommand('Open', [filePath, ""]);
   }
-};
-
-Client.prototype.fileChanged = function(fileName) {
-  var options = this.monitoredFiles[fileName];
-
-  console.log('[black-bird-cli]', 'File changed', options);
-  this.sendCommand('Changed', [options]);
 };
 
 Client.prototype.filterMonitorFiles = function(ignoredNames) {
@@ -196,7 +180,7 @@ Client.prototype.filterMonitorFiles = function(ignoredNames) {
   }
 };
 
-Client.prototype.createMonitor = function(remotePath, ignoredNames) {
+Client.prototype.createMonitor = function(filePath, ignoredNames) {
   console.log('[black-bird-cli]', 'Create monitor');
 
   var options = {
@@ -210,7 +194,7 @@ Client.prototype.createMonitor = function(remotePath, ignoredNames) {
     this.monitor.stop();
   }
 
-  watch.createMonitor(remotePath, options, function (monitor) {
+  watch.createMonitor(filePath, options, function (monitor) {
     console.log('[black-bird-cli]', '[monitor]', 'Monitor created');
     this.monitor = monitor;
 
@@ -221,9 +205,9 @@ Client.prototype.createMonitor = function(remotePath, ignoredNames) {
 
     monitor.on("changed", function (f, curr, prev) {
       console.log('[black-bird-cli]', '[monitor]', 'File changed', f);
-      if (this.monitoredFiles[f.toString()]) {
-        this.fileChanged(f.toString());
-      }
+      fs.readFile(f, function(err, buf) {
+        this.sendCommand('Changed', [f.toString(), md5(buf)]);
+      }.bind(this));
     }.bind(this));
 
     monitor.on("removed", function (f, stat) {
