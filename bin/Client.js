@@ -23,7 +23,7 @@ Client.prototype.handleSocketEvents = function() {
   this.socket.on('connect', function() {
     console.log('[black-bird-cli]', 'Connected');
 
-    this.socket.emit('black-bird:connect');
+    this.socket.emit('black-bird:connect', os.hostname());
 
     if (this.fileList.length) {
       this.openFileList(this.fileList);
